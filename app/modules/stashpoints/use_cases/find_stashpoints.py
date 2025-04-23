@@ -26,21 +26,21 @@ class FindStashpoints:
                 pickup_time = datetime.fromisoformat(self.data['pickup'].replace('Z', '+00:00'))
                 
                 # Convert to naive datetimes for comparison
-                dropoff_naive = dropoff_time.replace(tzinfo=None)
-                pickup_naive = pickup_time.replace(tzinfo=None)
+                # dropoff_naive = dropoff_time.replace(tzinfo=None)
+                # pickup_naive = pickup_time.replace(tzinfo=None)
                 
                 # Check if pickup is after dropoff
-                if pickup_naive <= dropoff_naive:
-                    self.response.add_error(Error("Pickup time must be after dropoff time"))
-                    self.response.set_status_code(400)
-                    return self.response
-                
-                # Check if dropoff is in the future
-                now = datetime.utcnow()  # this is naive
-                if dropoff_naive < now:
-                    self.response.add_error(Error("Dropoff time must be in the future"))
-                    self.response.set_status_code(400)
-                    return self.response
+                # if pickup_naive <= dropoff_naive:
+                #     self.response.add_error(Error("Pickup time must be after dropoff time"))
+                #     self.response.set_status_code(400)
+                #     return self.response
+                # 
+                # # Check if dropoff is in the future
+                # now = datetime.utcnow()  # this is naive
+                # if dropoff_naive < now:
+                #     self.response.add_error(Error("Dropoff time must be in the future"))
+                #     self.response.set_status_code(400)
+                #     return self.response
                 
                 # Call the repository method with validated parameters
                 stashpoints = self.stashpoint_repository.find_available_stashpoints(
