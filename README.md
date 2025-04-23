@@ -110,3 +110,21 @@ When you're ready, send us your solution as a Git repository. Make sure to inclu
 You may also submit a README.md to accompany your solution, to explain any decisions made or enhancements you would make with more time.
 
 Good luck!
+
+---
+
+## Solution notes:
+
+- The code for this challenge is in a branch called `test` and there is a pull request made for it. The reason is just because i figured it could be easier to look at the PR.
+- Nothing changes on how you run the code. the only change is the branch. so just checkout the branch and then use docker compose to run everything.
+- The code is AI generated. Or more accurately, it's translated from a typescript code that i wrote. The structure is mine.
+- A couple of things here were made to show structure rather than necessity. for example:
+  - The 2 validation layers. In this case both of them are the same which shouldn't be the case, but in this requirement both aren't necessary. I only included the one in the domain layer (use case) to show how i think a more complicated validation should be handled.
+  - Response class. I believe there should a form of consistent way to send data to the frontend. but the task had how the response should show up in the first place so eventually i did do the response class but it wasn't necessary
+- What I would do to make this better:
+  - Add testing
+  - Add interfaces
+  - Separate the data type transformers into a more proper place (remove the one in the model, make a folder inside the module and add these different types for different api responses).
+  - There is probably some way to make the route more compact but I need more knowledge about the language.
+  - Modules should encapsulate all of their resources including the model and the routes. So, I would move the model and the router for stashpoints to be inside the stashpoint module.
+
