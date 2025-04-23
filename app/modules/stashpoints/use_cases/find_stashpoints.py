@@ -1,8 +1,12 @@
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
+import math
 from app.modules.stashpoints.repository import StashpointRepository
 from app.modules.stashpoints.validators.find_stashpoints import find_stashpoints_input_schema
 from app.services.response import Response, Error
+from app.models.stashpoint import Stashpoint
+from app.models.booking import Booking
+from app import db
 
 
 class FindStashpoints:
@@ -52,9 +56,8 @@ class FindStashpoints:
                     radius_km=float(self.data.get('radius_km', 5.0))
                 )
                 
-                # Convert stashpoints to dictionary for API response
-                stashpoints_data = [stashpoint.to_dict() for stashpoint in stashpoints]
-                self.response.set_payload({"stashpoints": stashpoints_data})
+                # The repository now returns properly formatted stashpoints
+                self.response.set_payload(stashpoints)
                 
             except Exception as error:
                 self.response.add_error(Error(str(error)))

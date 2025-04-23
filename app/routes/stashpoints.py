@@ -48,8 +48,12 @@ def get_stashpoints():
             # Execute use case
             response = find_stashpoints_use_case.exec()
             
-            # Return response
-            return jsonify(response.get_response()), response.status_code
+            # For filtered stashpoints, we return a direct array instead of wrapped in object
+            api_response = response.get_response()
+            if api_response['success']:
+                return jsonify(api_response['payload']), response.status_code
+            else:
+                return jsonify(api_response), response.status_code
             
         except Exception as e:
             # Handle any unexpected errors

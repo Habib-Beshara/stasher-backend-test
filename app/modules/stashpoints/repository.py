@@ -87,11 +87,15 @@ class StashpointRepository(SQLRepository[Stashpoint]):
             .subquery()
         )
         
-        # Main query to find available stashpoints
+        # Main query to find available stashpoints with distance calculation and available capacity
         stmt = (
             select(
                 Stashpoint,
-                ST_Distance(Stashpoint.location, search_point).label("distance")
+                # Calculate distance in meters and convert to kilometers
+                # Note: ST_Distance returns meters for geography type
+                (ST_Distance(Stashpoint.location, search_point) / 1000.0).label("distance_km"),
+                # Calculate available capacity by subtracting booked bags
+                (Stashpoint.capacity - func.coalesce(active_bookings_subquery.c.booked_bags, 0)).label("available_capacity")
             )
             .outerjoin(
                 active_bookings_subquery,
@@ -114,8 +118,32 @@ class StashpointRepository(SQLRepository[Stashpoint]):
                     func.cast(Stashpoint.open_until, db.String) >= func.cast(pickup_time_only, db.String)
                 )
             )
-            .order_by("distance")
+            .order_by("distance_km")
         )
         
         result = self.session.execute(stmt)
-        return [row[0] for row in result.all()]
+        
+        # Process results to build formatted response
+        formatted_results = []
+        for row in result.all():
+            stashpoint = row[0]
+            distance_km = row[1]
+            available_capacity = row[2]
+            
+            # Create dictionary with the required fields
+            formatted_stashpoint = {
+                "id": stashpoint.id,
+                "name": stashpoint.name,
+                "address": stashpoint.address,
+                "latitude": stashpoint.latitude,
+                "longitude": stashpoint.longitude,
+                "distance_km": round(distance_km, 2),
+                "capacity": stashpoint.capacity,
+                "available_capacity": available_capacity,
+                "open_from": stashpoint.open_from.strftime("%H:%M") if stashpoint.open_from else None,
+                "open_until": stashpoint.open_until.strftime("%H:%M") if stashpoint.open_until else None
+            }
+            
+            formatted_results.append(formatted_stashpoint)
+            
+        return formatted_results
