@@ -24,7 +24,8 @@ class Response:
         self.errors.append(error)
 
     def add_errors(self, errors: List[Error]) -> None:
-        self.errors.extend(errors)
+        if errors:
+            self.errors.extend(errors)
 
     def set_status_code(self, status_code: int) -> None:
         self.status_code = status_code

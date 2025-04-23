@@ -17,7 +17,7 @@ class FindStashpoints:
         self.validation_service = validation_service
         self.response = Response()
 
-    async def exec(self) -> Response:
+    def exec(self) -> Response:
         valid = self.validate_input()
         if valid:
             try:
@@ -25,21 +25,25 @@ class FindStashpoints:
                 dropoff_time = datetime.fromisoformat(self.data['dropoff'].replace('Z', '+00:00'))
                 pickup_time = datetime.fromisoformat(self.data['pickup'].replace('Z', '+00:00'))
                 
+                # Convert to naive datetimes for comparison
+                dropoff_naive = dropoff_time.replace(tzinfo=None)
+                pickup_naive = pickup_time.replace(tzinfo=None)
+                
                 # Check if pickup is after dropoff
-                if pickup_time <= dropoff_time:
+                if pickup_naive <= dropoff_naive:
                     self.response.add_error(Error("Pickup time must be after dropoff time"))
                     self.response.set_status_code(400)
                     return self.response
                 
                 # Check if dropoff is in the future
-                now = datetime.utcnow()
-                if dropoff_time < now:
+                now = datetime.utcnow()  # this is naive
+                if dropoff_naive < now:
                     self.response.add_error(Error("Dropoff time must be in the future"))
                     self.response.set_status_code(400)
                     return self.response
                 
                 # Call the repository method with validated parameters
-                stashpoints = await self.stashpoint_repository.find_available_stashpoints(
+                stashpoints = self.stashpoint_repository.find_available_stashpoints(
                     latitude=float(self.data['lat']),
                     longitude=float(self.data['lng']),
                     dropoff_time=dropoff_time,
@@ -59,11 +63,12 @@ class FindStashpoints:
         return self.response
 
     def validate_input(self) -> bool:
-        validate = self.validation_service.compile(find_stashpoints_input_schema)
-        valid = validate(self.data)
-        if not valid:
+        try:
+            self.validation_service.validate(instance=self.data, schema=find_stashpoints_input_schema)
+            valid = True
+        except self.validation_service.ValidationError as e:
             # Convert validation errors to Error objects
-            errors = [Error(error) for error in getattr(validate, 'errors', [])]
-            self.response.add_errors(errors)
+            self.response.add_error(Error(str(e)))
             self.response.set_status_code(400)
+            valid = False
         return valid

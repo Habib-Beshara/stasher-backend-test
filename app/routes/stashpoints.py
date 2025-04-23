@@ -13,45 +13,51 @@ bp = Blueprint("stashpoints", __name__)
 
 
 @bp.route("/", methods=["GET"])
-@validate_request_middleware(find_stashpoints_api_schema)
-async def get_stashpoints():
+def get_stashpoints():
     """Find stashpoints based on query parameters"""
-    try:
-        # Get query parameters
-        query_params = {
-            'lat': float(request.args.get('lat')),
-            'lng': float(request.args.get('lng')),
-            'dropoff': request.args.get('dropoff'),
-            'pickup': request.args.get('pickup'),
-            'bag_count': int(request.args.get('bag_count')),
-        }
-        
-        # Add optional radius if provided
-        if 'radius_km' in request.args:
-            query_params['radius_km'] = float(request.args.get('radius_km'))
-        
-        # Get a session from the database engine
-        session = current_app.db.session
-        
-        # Create repository
-        stashpoint_repository = StashpointRepository(session)
-        
-        # Create use case with validation service
-        find_stashpoints_use_case = FindStashpoints(
-            stashpoint_repository=stashpoint_repository,
-            data=query_params,
-            validation_service=jsonschema
-        )
-        
-        # Execute use case
-        response = await find_stashpoints_use_case.exec()
-        
-        # Return response
-        return jsonify(response.get_response()), response.status_code
-        
-    except Exception as e:
-        # Handle any unexpected errors
-        response = Response()
-        response.add_error(Error(str(e)))
-        response.set_status_code(500)
-        return jsonify(response.get_response()), response.status_code
+    # Check if filtering parameters are present
+    if all(param in request.args for param in ['lat', 'lng', 'dropoff', 'pickup', 'bag_count']):
+        try:
+            # Get query parameters
+            query_params = {
+                'lat': float(request.args.get('lat')),
+                'lng': float(request.args.get('lng')),
+                'dropoff': request.args.get('dropoff'),
+                'pickup': request.args.get('pickup'),
+                'bag_count': int(request.args.get('bag_count')),
+            }
+            
+            # Add optional radius if provided
+            if 'radius_km' in request.args:
+                query_params['radius_km'] = float(request.args.get('radius_km'))
+            
+            # Get a session from the database engine
+            from app import db
+            session = db.session
+            
+            # Create repository
+            stashpoint_repository = StashpointRepository(session)
+            
+            # Create use case with validation service
+            find_stashpoints_use_case = FindStashpoints(
+                stashpoint_repository=stashpoint_repository,
+                data=query_params,
+                validation_service=jsonschema
+            )
+            
+            # Execute use case
+            response = find_stashpoints_use_case.exec()
+            
+            # Return response
+            return jsonify(response.get_response()), response.status_code
+            
+        except Exception as e:
+            # Handle any unexpected errors
+            response = Response()
+            response.add_error(Error(str(e)))
+            response.set_status_code(500)
+            return jsonify(response.get_response()), response.status_code
+    
+    # Default behavior - get all stashpoints
+    stashpoints = Stashpoint.query.all()
+    return jsonify([stashpoint.to_dict() for stashpoint in stashpoints])

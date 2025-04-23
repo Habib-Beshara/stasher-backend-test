@@ -3,9 +3,10 @@ from app.models.stashpoint import Stashpoint
 from app.models.booking import Booking
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
-from sqlalchemy import select, func, and_, or_, not_
+from sqlalchemy import select, func, and_, or_, not_, cast
 from sqlalchemy.sql import text
 from geoalchemy2.functions import ST_DWithin, ST_Point, ST_Distance
+from app import db
 from datetime import datetime
 
 
@@ -13,27 +14,27 @@ class StashpointRepository(SQLRepository[Stashpoint]):
     def __init__(self, session: Session):
         super().__init__(Stashpoint, session)
     
-    async def find_by_name(self, name: str) -> List[Stashpoint]:
+    def find_by_name(self, name: str) -> List[Stashpoint]:
         stmt = select(self.model).where(self.model.name.ilike(f"%{name}%"))
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         return result.scalars().all()
     
-    async def find_by_location(self, latitude: float, longitude: float, distance_meters: int = 5000) -> List[Stashpoint]:
+    def find_by_location(self, latitude: float, longitude: float, distance_meters: int = 5000) -> List[Stashpoint]:
         """Find stashpoints within a specified distance from coordinates"""
         point = ST_Point(longitude, latitude, srid=4326)
         stmt = select(self.model).where(
             ST_DWithin(self.model.location, point, distance_meters)
         )
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         return result.scalars().all()
     
-    async def find_with_available_capacity(self, min_capacity: int = 1) -> List[Stashpoint]:
+    def find_with_available_capacity(self, min_capacity: int = 1) -> List[Stashpoint]:
         """Find stashpoints with at least the specified available capacity"""
         stmt = select(self.model).where(self.model.capacity >= min_capacity)
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         return result.scalars().all()
     
-    async def find_available_stashpoints(
+    def find_available_stashpoints(
         self,
         latitude: float,
         longitude: float,
@@ -56,11 +57,20 @@ class StashpointRepository(SQLRepository[Stashpoint]):
         # Create point from provided coordinates
         search_point = ST_Point(longitude, latitude, srid=4326)
         
-        # Get the time components for open hours check
-        dropoff_time_only = func.time(dropoff_time)
-        pickup_time_only = func.time(pickup_time)
+        # Convert to naive datetime objects for database comparison
+        dropoff_time = dropoff_time.replace(tzinfo=None)
+        pickup_time = pickup_time.replace(tzinfo=None)
+        
+        # Extract time portion for opening hours comparison
+        # We need to use a different approach to extract just the time part
+        dropoff_time_only = dropoff_time.time()  
+        pickup_time_only = pickup_time.time()
         
         # First, find all active bookings that overlap with the requested time period
+        # Logic: a booking overlaps if:
+        # - It's not cancelled
+        # - Existing booking drop-off occurs before our pickup time
+        # - Existing booking pickup occurs after our drop-off time
         active_bookings_subquery = (
             select(
                 Booking.stashpoint_id,
@@ -69,13 +79,8 @@ class StashpointRepository(SQLRepository[Stashpoint]):
             .where(
                 and_(
                     not_(Booking.is_cancelled),
-                    or_(
-                        # Booking that overlaps with the requested period
-                        and_(
-                            Booking.dropoff_time <= pickup_time,
-                            Booking.pickup_time >= dropoff_time
-                        )
-                    )
+                    Booking.dropoff_time <= pickup_time,
+                    Booking.pickup_time >= dropoff_time
                 )
             )
             .group_by(Booking.stashpoint_id)
@@ -104,12 +109,13 @@ class StashpointRepository(SQLRepository[Stashpoint]):
                     ),
                     
                     # Check opening hours: must be open at drop-off and pick-up times
-                    Stashpoint.open_from <= dropoff_time_only,
-                    Stashpoint.open_until >= pickup_time_only
+                    # Using direct string comparison for times
+                    func.cast(Stashpoint.open_from, db.String) <= func.cast(dropoff_time_only, db.String),
+                    func.cast(Stashpoint.open_until, db.String) >= func.cast(pickup_time_only, db.String)
                 )
             )
             .order_by("distance")
         )
         
-        result = await self.session.execute(stmt)
+        result = self.session.execute(stmt)
         return [row[0] for row in result.all()]
