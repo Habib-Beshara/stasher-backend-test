@@ -1,7 +1,12 @@
-# write me a route to get all stashpoints
-
-from flask import Blueprint, jsonify
-from app.models import Stashpoint
+from flask import Blueprint, jsonify, request, current_app
+import jsonschema
+from app.models.stashpoint import Stashpoint
+from app.modules.stashpoints.repository import StashpointRepository
+from app.modules.stashpoints.use_cases.find_stashpoints import FindStashpoints
+from app.modules.stashpoints.api.validators.find_stashpoints import find_stashpoints_api_schema
+from app.services.api_validation_middleware import validate_request_middleware
+from app.services.response import Response, Error
+from datetime import datetime
 
 
 bp = Blueprint("stashpoints", __name__)
@@ -9,5 +14,59 @@ bp = Blueprint("stashpoints", __name__)
 
 @bp.route("/", methods=["GET"])
 def get_stashpoints():
-    stashpoints = Stashpoint.query.all()
-    return jsonify([stashpoint.to_dict() for stashpoint in stashpoints])
+    """Find stashpoints based on query parameters"""
+    # Check if filtering parameters are present to determine which handler to use
+    if all(param in request.args for param in ['lat', 'lng', 'dropoff', 'pickup', 'bag_count']):
+        return find_filtered_stashpoints()
+    else:
+        # Default behavior - get all stashpoints
+        stashpoints = Stashpoint.query.all()
+        return jsonify([stashpoint.to_dict() for stashpoint in stashpoints])
+
+@validate_request_middleware(find_stashpoints_api_schema)
+def find_filtered_stashpoints():
+    """Find stashpoints based on filtering criteria with validation"""
+    try:
+        # Get query parameters (already validated and converted by middleware)
+        query_params = {
+            'lat': float(request.args.get('lat')),
+            'lng': float(request.args.get('lng')),
+            'dropoff': request.args.get('dropoff'),
+            'pickup': request.args.get('pickup'),
+            'bag_count': int(request.args.get('bag_count')),
+        }
+        
+        # Add optional radius if provided
+        if 'radius_km' in request.args:
+            query_params['radius_km'] = float(request.args.get('radius_km'))
+        
+        # Get a session from the database engine
+        from app import db
+        session = db.session
+        
+        # Create repository
+        stashpoint_repository = StashpointRepository(session)
+        
+        # Create use case with validation service
+        find_stashpoints_use_case = FindStashpoints(
+            stashpoint_repository=stashpoint_repository,
+            data=query_params,
+            validation_service=jsonschema
+        )
+        
+        # Execute use case
+        response = find_stashpoints_use_case.exec()
+        
+        # For filtered stashpoints, we return a direct array instead of wrapped in object
+        api_response = response.get_response()
+        if api_response['success']:
+            return jsonify(api_response['payload']), response.status_code
+        else:
+            return jsonify(api_response), response.status_code
+        
+    except Exception as e:
+        # Handle any unexpected errors
+        response = Response()
+        response.add_error(Error(str(e)))
+        response.set_status_code(500)
+        return jsonify(response.get_response()), response.status_code
